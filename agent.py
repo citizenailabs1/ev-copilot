@@ -1,17 +1,30 @@
 from dotenv import load_dotenv
 import anthropic, json
+import tesla
 
 load_dotenv()
 client = anthropic.Anthropic()
 
-# PART 1: THE CAR (sample data shaped like Tesla's real API; we swap in your real car later)
+# PART 1: THE CAR (now reads your REAL Tesla, read-only)
 def get_battery():
-    return {"battery_level": 72, "battery_range_miles": 210, "charging_state": "Disconnected"}
+    data = tesla.get_vehicle_data()
+    if "error" in data:
+        return data
+    c = data["charge_state"]
+    return {"battery_level": c["battery_level"],
+            "battery_range_miles": c["battery_range"],
+            "charging_state": c["charging_state"]}
 
 def get_climate():
-    return {"inside_temp_c": 18.5, "outside_temp_c": 12.0, "is_climate_on": False}
+    data = tesla.get_vehicle_data()
+    if "error" in data:
+        return data
+    c = data["climate_state"]
+    return {"inside_temp_c": c.get("inside_temp"),
+            "outside_temp_c": c.get("outside_temp"),
+            "is_climate_on": c.get("is_climate_on")}
 
-# PART 2: THE TOOL MENU (tells Claude which tools exist and when to use them)
+# PART 2: THE TOOL MENU
 tools = [
     {"name": "get_battery",
      "description": "Get the car's battery percent, estimated range in miles, and charging status.",
@@ -22,7 +35,7 @@ tools = [
 ]
 TOOL_FUNCTIONS = {"get_battery": get_battery, "get_climate": get_climate}
 
-# PART 3: THE AGENT LOOP (ask Claude -> run the tool it picks -> give it the result -> repeat)
+# PART 3: THE AGENT LOOP
 def ask(question):
     messages = [{"role": "user", "content": question}]
     while True:
@@ -30,7 +43,8 @@ def ask(question):
             model="claude-sonnet-5-5",
             max_tokens=1000,
             system="You are EV Copilot, an assistant for the user's electric car. "
-                   "Always use tools to get car data. Never guess numbers.",
+                   "Always use tools to get car data. Never guess numbers. "
+                   "If a tool returns an error, explain it simply.",
             tools=tools,
             messages=messages,
         )
